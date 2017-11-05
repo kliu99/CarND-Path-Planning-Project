@@ -152,6 +152,44 @@ getXY(double s, double d, const vector<double> &maps_s, const vector<double> &ma
 
 }
 
+// Predict vehicle's future position by given the sensor fusion data
+double predictS(vector<double> measure, int prev_size)
+{
+    double vx = measure[3];
+    double vy = measure[4];
+    double check_speed = sqrt(vx*vx + vy*vy);
+    double check_car_s = measure[5];
+
+    // using previous points can predict s value outward
+    check_car_s += ((double) prev_size * 0.02 * check_speed);
+
+    return check_car_s;
+}
+
+bool can_change_lane(vector<vector<double>> sensor_fusion, int previous_path_size, double car_s, int target_lane)
+{
+    // Check if is safe for ego vehicle to change to the left lane
+    for (auto &measure : sensor_fusion) 
+    {
+        float d = measure[6];
+
+        // car is in my lane. (2 + 4 * lane is my car's lane's center). (+/- 2 covers to entire lane)
+        if (d < (2 + 4 * (target_lane) + 2) && d > (2 + 4 * (target_lane) - 2))
+        {
+            double check_car_s = predictS(measure, previous_path_size);
+            if ( (check_car_s > car_s && check_car_s - car_s < 30 ) || (check_car_s < car_s && car_s - check_car_s < 5) )
+            {
+                // Do some logic here. lower reference velocity so we don't crash into the car in front of us.
+                // Could also flag to try change lanes.
+                //ref_vel = 29.5; // mph
+                return false;
+            }
+
+        }
+    }
+    return true;
+}
+
 int main() {
     uWS::Hub h;
 
@@ -193,7 +231,7 @@ int main() {
     int lane = 1;
 
     // Reference spped
-    double ref_vel = 49.5;
+    double ref_vel = 0;
 
     // Reference planner path szie
     int ref_path_size = 50;
@@ -239,10 +277,82 @@ int main() {
                     // Previous path's size
                     int previous_path_size = previous_path_x.size();
 
+                    //+++ Sensor Fusion
+                    if (previous_path_size > 0)
+                    {
+                        car_s = end_path_s;
+                    }
+
+                    // Check if ego vehicle is too close to the front vehicle
+                    // bool too_close = is_too_close(sensor_fusion, previous_path_size, car_s, lane);
+
+                    bool too_close = false;
+                    // Check if is safe for ego vehicle to change to the left lane
+                    for (auto &measure : sensor_fusion)
+                    {
+                        float d = measure[6];
+
+                        // car is in my lane. (2 + 4 * lane is my car's lane's center). (+/- 2 covers to entire lane)
+                        if (d < (2 + 4 * (lane) + 2) && d > (2 + 4 * (lane) - 2))
+                        {
+                            double check_car_s = predictS(measure, previous_path_size);
+                            if ( check_car_s > car_s && check_car_s - car_s < 30 )
+                            {
+                                // Do some logic here. lower reference velocity so we don't crash into the car in front of us.
+                                // Could also flag to try change lanes.
+                                //ref_vel = 29.5; // mph
+                                too_close = true;
+                            }
+
+                        }
+                    }
+
+                    if (too_close)
+                    {
+                        bool lcl;               // at left-most lane
+                        if (lane == 0) {
+                            lcl = false;
+                        } else {
+                            lcl = can_change_lane(sensor_fusion, previous_path_size, car_s, lane - 1);
+                        }
+
+                        if (lcl)
+                        {
+                            lane -= 1;
+                            cout << "Too close. LCL" << endl;
+                        }
+                        else
+                        {
+                            bool lcr;
+                            if (lane == 2) {    // at right-most lane
+                                lcr = false;
+                            } else {
+                                lcr = can_change_lane(sensor_fusion, previous_path_size, car_s, lane + 1);
+                            }
+
+                            if (lcr) {
+                                lane += 1;
+                                cout << "Too close. LCR" << endl;
+                            }
+                            else
+                            {
+                                // KL (reduce speed)
+                                ref_vel -= 0.224;       // m/s
+                                cout << "Too close. KL. Break" << endl;
+                            }
+                        }
+                    }
+                    else if (ref_vel < 49.5)
+                    {
+                        ref_vel += 0.224;
+                        cout << "KL. Acc" << endl;
+                    }
+                    else
+                    {
+                        cout << "KL" << endl;
+                    }
 
                     json msgJson;
-
-                    // TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
 
                     // Create a list of widely spaced (x,y) waypoints, evenly spaced at 30m
                     // Later we will interpolate these waypoints with a spline and fill it in with more points that control speed.
