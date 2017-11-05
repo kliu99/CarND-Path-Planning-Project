@@ -179,9 +179,6 @@ bool can_change_lane(vector<vector<double>> sensor_fusion, int previous_path_siz
             double check_car_s = predictS(measure, previous_path_size);
             if ( (check_car_s > car_s && check_car_s - car_s < 30 ) || (check_car_s < car_s && car_s - check_car_s < 5) )
             {
-                // Do some logic here. lower reference velocity so we don't crash into the car in front of us.
-                // Could also flag to try change lanes.
-                //ref_vel = 29.5; // mph
                 return false;
             }
 
@@ -398,11 +395,11 @@ int main() {
                     }
 
                     // In Frenet add evenly 30m spaced points ahead of the starting reference
-                    double dist_inc = 30;       // 30m apart away from way points
+                    double dist_inc = 30;                   // 30m apart away from way points
                     for (int i = 1; i <= 3; i++)
                     {
                         double next_s = car_s + i * dist_inc;
-                        double next_d = 2 + 4 * lane;      // center of the lane. Lane width is 4m
+                        double next_d = 2 + 4 * lane;       // center of the lane. Lane width is 4m
                         // Convert from Frenet to XY
                         vector<double> next_xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x,
                                                        map_waypoints_y);
@@ -410,7 +407,7 @@ int main() {
                         spline_y_vals.push_back(next_xy[1]);
                     }
 
-                    // Shipt car reference angle to 0 degree
+                    // Shift car reference angle to 0 degree
                     for (int i = 0; i < spline_x_vals.size(); i++)
                     {
                         double shift_x = spline_x_vals[i] - ref_x;
@@ -460,10 +457,6 @@ int main() {
                         next_x_vals.push_back(x_point);
                         next_y_vals.push_back(y_point);
                     }
-
-
-
-
 
                     msgJson["next_x"] = next_x_vals;
                     msgJson["next_y"] = next_y_vals;
